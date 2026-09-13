@@ -89,7 +89,28 @@ const bookInput=$("book"),officialInput=$("official"),bookNameEl=$("bookName"),o
 const runBtn=$("run"),statusEl=$("status"),resultEl=$("result"),matchedEl=$("matched"),clearNEl=$("clearN"),scoreNEl=$("scoreN"),bpNEl=$("bpN"),djNEl=$("djN"),rowsEl=$("rows");
 const downloadBtn=$("download"),downloadLogBtn=$("downloadLog"),clearCheck=$("clear"),scoreCheck=$("score"),djCheck=$("dj"),bpCheck=$("bp");
 
-bookInput.addEventListener("change",()=>{bookFile=bookInput.files[0]||null;bookNameEl.textContent=bookFile?bookFile.name:"未選択"});
+bookInput.
+function rowsToObjects(rows, detected) {
+  const out = [];
+  const start = detected.headerRow + 1;
+  const headers = detected.headers;
+  for (let r = start; r < rows.length; r++) {
+    const row = rows[r];
+    if (!row || row.every(v => String(v ?? "").trim() === "")) continue;
+    const obj = {};
+    headers.forEach((h, i) => { obj[h] = row[i] ?? ""; });
+    out.push(obj);
+  }
+  return out;
+}
+
+
+function getField(row, headers, index) {
+  if (index >= 0) return row[headers[index]] ?? row[index] ?? "";
+  return "";
+}
+
+addEventListener("change",()=>{bookFile=bookInput.files[0]||null;bookNameEl.textContent=bookFile?bookFile.name:"未選択"});
 officialInput.addEventListener("change",()=>{officialFile=officialInput.files[0]||null;officialNameEl.textContent=officialFile?officialFile.name:"未選択"});
 
 function decode(buf){
