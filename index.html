@@ -25,6 +25,13 @@ button{width:100%;min-height:50px;border:0;border-radius:13px;font-size:16px;fon
 .tablewrap{max-height:400px;overflow:auto;border:1px solid #e6e8eb;border-radius:11px;margin-top:14px}
 table{border-collapse:collapse;width:100%;font-size:12px;white-space:nowrap}th,td{padding:8px;border-bottom:1px solid #eee;text-align:left}th{position:sticky;top:0;background:#f8fafc}
 .hidden{display:none}.ok{color:#067647}.err{color:#b42318}
+
+#downloadMerged, #download {
+  font-weight: 700;
+  min-height: 48px;
+}
+#processingPanel[style*="display:none"] { display:none !important; }
+
 </style>
 </head>
 <body>
@@ -61,7 +68,7 @@ table{border-collapse:collapse;width:100%;font-size:12px;white-space:nowrap}th,t
 <div class="stat"><div class="label">BP更新</div><div class="num" id="bpN">0</div></div>
 <div class="stat"><div class="label">DJ LEVEL更新</div><div class="num" id="djN">0</div></div>
 </div>
-<button id="download" class="secondary">統合CSVを保存</button>
+<button id="download" class="secondary">統合ファイルをダウンロード</button>
 <button id="downloadLog" class="secondary">更新一覧CSVを保存</button>
 <div class="tablewrap"><table><thead><tr><th>曲名</th><th>譜面</th><th>項目</th><th>公式</th><th>手帳</th><th>採用</th></tr></thead><tbody id="rows"></tbody></table></div>
 </section>
@@ -73,46 +80,102 @@ table{border-collapse:collapse;width:100%;font-size:12px;white-space:nowrap}th,t
 </main>
 
 <script>
-let bookFile=null, officialFile=null, merged="", logs=[];
+"use strict";
+let bookFile=null,officialFile=null,merged="",logs=[];
 const CR={"NO PLAY":0,"FAILED":1,"E-CLEAR":2,"EASY CLEAR":2,"A-CLEAR":3,"ASSIST CLEAR":3,"CLEAR":4,"H-CLEAR":5,"HARD CLEAR":5,"EXH-CLEAR":6,"EX HARD CLEAR":6,"F-COMBO":7,"FULLCOMBO CLEAR":7,"FULL COMBO CLEAR":7,"MAX":8,"MAX-":8};
 const LR={"":-1,"F":0,"E":1,"D":2,"C":3,"B":4,"A":5,"AA":6,"AAA":7};
 const $=id=>document.getElementById(id);
-book.onchange=()=>{bookFile=book.files[0]||null;bookName.textContent=bookFile?bookFile.name:"未選択"};
-official.onchange=()=>{officialFile=official.files[0]||null;officialName.textContent=officialFile?officialFile.name:"未選択"};
+const bookInput=$("book"),officialInput=$("official"),bookNameEl=$("bookName"),officialNameEl=$("officialName");
+const runBtn=$("run"),statusEl=$("status"),resultEl=$("result"),matchedEl=$("matched"),clearNEl=$("clearN"),scoreNEl=$("scoreN"),bpNEl=$("bpN"),djNEl=$("djN"),rowsEl=$("rows");
+const downloadBtn=$("download"),downloadLogBtn=$("downloadLog"),clearCheck=$("clear"),scoreCheck=$("score"),djCheck=$("dj"),bpCheck=$("bp");
 
-function decode(buf){let u=new Uint8Array(buf);if(u[0]===239&&u[1]===187&&u[2]===191)return new TextDecoder("utf-8").decode(u);try{return new TextDecoder("utf-8",{fatal:true}).decode(u)}catch(e){return new TextDecoder("shift-jis").decode(u)}}
-function parseCSV(s){s=s.replace(/^\uFEFF/,"");let a=[],r=[],c="",q=false;for(let i=0;i<s.length;i++){let x=s[i],n=s[i+1];if(q){if(x=='"'&&n=='"'){c+='"';i++}else if(x=='"')q=false;else c+=x}else if(x=='"')q=true;else if(x==','){r.push(c);c=""}else if(x=='\n'){r.push(c);a.push(r);r=[];c=""}else if(x!='\r')c+=x}if(c!==""||r.length){r.push(c);a.push(r)}return a}
-function norm(x){return String(x??"").trim().replace(/\u3000/g," ").replace(/\s+/g," ").toUpperCase()}
-function findCol(h,names){let z=h.map(norm);for(let n of names){let i=z.indexOf(norm(n));if(i>=0)return i}for(let i=0;i<z.length;i++)for(let n of names)if(z[i].includes(norm(n)))return i;return -1}
-function mapCols(h){return{song:findCol(h,["曲名","TITLE","MUSIC"]),diff:findCol(h,["難易度","譜面","DIFFICULTY","LEVEL"]),clear:findCol(h,["クリアタイプ","CLEAR TYPE","CLEARTYPE"]),score:findCol(h,["スコア","SCORE","EX SCORE","EXSCORE"]),dj:findCol(h,["DJ LEVEL","DJLEVEL"]),bp:findCol(h,["ミスカウント","MISS COUNT","MISSCOUNT","BP","BREAK POINT"])}}
-function val(r,i){return i>=0?String(r[i]??"").trim():""} function key(a,b){return norm(a)+"\0"+norm(b)}
-function canonical(x){x=norm(x);return {"E-CLEAR":"EASY CLEAR","A-CLEAR":"ASSIST CLEAR","H-CLEAR":"HARD CLEAR","EXH-CLEAR":"EX HARD CLEAR","F-COMBO":"FULLCOMBO CLEAR"}[x]||x}
-function num(x){let n=parseInt(String(x).replace(/[^\d-]/g,""),10);return Number.isFinite(n)?n:null}
-function choose(a,b,t){if(t==="score"){let x=num(a),y=num(b);return y!=null&&(x==null||y>x)?[1,b]:[0,a]}if(t==="bp"){let x=num(a),y=num(b);return y!=null&&(x==null||y<x)?[1,b]:[0,a]}if(t==="dj"){return (LR[norm(b)]??-1)>(LR[norm(a)]??-1)?[1,b]:[0,a]}return (CR[canonical(b)]??0)>(CR[canonical(a)]??0)?[1,canonical(b)]:[0,a]}
-function esc(x){return String(x??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;")}
-function csv(x){x=String(x??"");return /[",\r\n]/.test(x)?'"'+x.replaceAll('"','""')+'"':x}
-function save(text,name){let blob=new Blob(["\uFEFF"+text],{type:"text/csv;charset=utf-8"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
+bookInput.addEventListener("change",()=>{bookFile=bookInput.files[0]||null;bookNameEl.textContent=bookFile?bookFile.name:"未選択"});
+officialInput.addEventListener("change",()=>{officialFile=officialInput.files[0]||null;officialNameEl.textContent=officialFile?officialFile.name:"未選択"});
 
-run.onclick=async()=>{
- if(!bookFile||!officialFile){status.innerHTML='<span class="err">2つのCSVを選択してください。</span>';return}
- status.textContent="CSVを読み込んで比較しています…";
- try{
- let [ba,oa]=await Promise.all([bookFile.arrayBuffer(),officialFile.arrayBuffer()]);
- let br=parseCSV(decode(ba)),or=parseCSV(decode(oa));if(br.length<2||or.length<2)throw Error("CSVが空です");
- let bm=mapCols(br[0]),om=mapCols(or[0]);if(bm.song<0||om.song<0)throw Error("曲名列を特定できません");
- let idx=new Map();for(let i=1;i<br.length;i++)idx.set(key(val(br[i],bm.song),val(br[i],bm.diff)),br[i]);
- let out=or.map(r=>r.slice()),cnt={clear:0,score:0,bp:0,dj:0};logs=[];let matched=0;
- let items=[["clear",clear.checked,om.clear,bm.clear],["score",score.checked,om.score,bm.score],["dj",dj.checked,om.dj,bm.dj],["bp",bp.checked,om.bp,bm.bp]];
- for(let i=1;i<out.length;i++){let r=out[i],b=idx.get(key(val(r,om.song),val(r,om.diff)));if(!b)continue;matched++;
-  for(let [t,on,oi,bi] of items){if(!on||oi<0||bi<0)continue;let old=val(r,oi),nv=val(b,bi),q=choose(old,nv,t);if(q[0]){r[oi]=q[1];cnt[t]++;logs.push([val(r,om.song),val(r,om.diff),t,old,nv,q[1]])}}
+function decode(buf){
+ const u=new Uint8Array(buf);
+ if(u[0]===239&&u[1]===187&&u[2]===191)return new TextDecoder("utf-8").decode(u);
+ try{return new TextDecoder("utf-8",{fatal:true}).decode(u)}
+ catch(e){return new TextDecoder("shift-jis").decode(u)}
+}
+function parseCSV(s){
+ s=s.replace(/^\uFEFF/,"");let a=[],r=[],c="",q=false;
+ for(let i=0;i<s.length;i++){let x=s[i],n=s[i+1];
+  if(q){if(x=='"'&&n=='"'){c+='"';i++}else if(x=='"')q=false;else c+=x}
+  else if(x=='"')q=true;else if(x==','){r.push(c);c=""}
+  else if(x=='\n'){r.push(c);a.push(r);r=[];c=""}else if(x!='\r')c+=x;
  }
- merged=out.map(r=>r.map(csv).join(",")).join("\r\n")+"\r\n";
- matched.textContent=matched.toLocaleString();clearN.textContent=cnt.clear;scoreN.textContent=cnt.score;bpN.textContent=cnt.bp;djN.textContent=cnt.dj;
- rows.innerHTML=logs.slice(0,1000).map(r=>"<tr>"+r.map(esc).map(x=>"<td>"+x+"</td>").join("")+"</tr>").join("");
- result.classList.remove("hidden");status.innerHTML='<span class="ok">完了：'+logs.length.toLocaleString()+'件を更新しました。</span>';
- }catch(e){status.innerHTML='<span class="err">エラー：'+esc(e.message)+'</span>'}
-};
-download.onclick=()=>save(merged,"IIDX_統合結果_SparkleShower.csv");
-downloadLog.onclick=()=>save(["曲名,譜面,更新項目,公式,リザルト手帳,採用値",...logs.map(r=>r.map(csv).join(","))].join("\r\n"),"IIDX_更新一覧.csv");
+ if(c!==""||r.length){r.push(c);a.push(r)}
+ return a.filter(row=>row.some(v=>String(v).trim()!==""));
+}
+function norm(x){return String(x??"").trim().replace(/\u3000/g," ").replace(/\s+/g," ").toUpperCase()}
+function findCol(h,names){
+ let z=h.map(norm);
+ for(let n of names){let i=z.indexOf(norm(n));if(i>=0)return i}
+ for(let i=0;i<z.length;i++)for(let n of names)if(z[i].includes(norm(n)))return i;
+ return -1;
+}
+function mapCols(h){return{
+ song:findCol(h,["曲名","TITLE","MUSIC"]),
+ diff:findCol(h,["難易度","譜面","DIFFICULTY","LEVEL"]),
+ clear:findCol(h,["クリアタイプ","CLEAR TYPE","CLEARTYPE"]),
+ score:findCol(h,["スコア","SCORE","EX SCORE","EXSCORE"]),
+ dj:findCol(h,["DJ LEVEL","DJLEVEL"]),
+ bp:findCol(h,["ミスカウント","MISS COUNT","MISSCOUNT","BP","BREAK POINT"])
+}}
+function val(r,i){return i>=0?String(r[i]??"").trim():""}
+function key(a,b){return norm(a)+"\0"+norm(b)}
+function canonical(x){x=norm(x);return{"E-CLEAR":"EASY CLEAR","A-CLEAR":"ASSIST CLEAR","H-CLEAR":"HARD CLEAR","EXH-CLEAR":"EX HARD CLEAR","F-COMBO":"FULLCOMBO CLEAR"}[x]||x}
+function num(x){let n=parseInt(String(x).replace(/[^\d-]/g,""),10);return Number.isFinite(n)?n:null}
+function choose(a,b,t){
+ if(t==="score"){let x=num(a),y=num(b);return y!=null&&(x==null||y>x)?[1,b]:[0,a]}
+ if(t==="bp"){let x=num(a),y=num(b);return y!=null&&(x==null||y<x)?[1,b]:[0,a]}
+ if(t==="dj")return(LR[norm(b)]??-1)>(LR[norm(a)]??-1)?[1,b]:[0,a];
+ return(CR[canonical(b)]??0)>(CR[canonical(a)]??0)?[1,canonical(b)]:[0,a]
+}
+function esc(x){return String(x??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;")}
+function csv(x){x=String(x??"");return/[",\r\n]/.test(x)?'"'+x.replaceAll('"','""')+'"':x}
+function save(text,name){
+ const blob=new Blob(["\uFEFF"+text],{type:"text/csv;charset=utf-8"});
+ const url=URL.createObjectURL(blob),a=document.createElement("a");
+ a.href=url;a.download=name;a.rel="noopener";document.body.appendChild(a);a.click();a.remove();
+ setTimeout(()=>URL.revokeObjectURL(url),2000);
+}
+function error(msg){statusEl.innerHTML='<span class="err">エラー：'+esc(msg)+'</span>'}
+
+runBtn.addEventListener("click",async()=>{
+ if(!bookFile||!officialFile){error("2つのCSVを選択してください。");return}
+ runBtn.disabled=true;runBtn.classList.add("disabled");statusEl.textContent="CSVを読み込んで比較しています…";resultEl.classList.add("hidden");
+ try{
+  const [bb,ob]=await Promise.all([bookFile.arrayBuffer(),officialFile.arrayBuffer()]);
+  const br=parseCSV(decode(bb)),or=parseCSV(decode(ob));
+  if(br.length<2)throw Error("リザルト手帳CSVにデータがありません。");
+  if(or.length<2)throw Error("IIDX公式CSVにデータがありません。");
+  const bm=mapCols(br[0]),om=mapCols(or[0]);
+  if(bm.song<0||om.song<0)throw Error("曲名列を特定できません。");
+  if(bm.diff<0||om.diff<0)throw Error("譜面/難易度列を特定できません。");
+  const idx=new Map();
+  for(let i=1;i<br.length;i++){const k=key(val(br[i],bm.song),val(br[i],bm.diff));if(k!=="\0")idx.set(k,br[i])}
+  const out=or.map(r=>r.slice()),cnt={clear:0,score:0,bp:0,dj:0};logs=[];let matchedCount=0;
+  const items=[["clear",clearCheck.checked,om.clear,bm.clear],["score",scoreCheck.checked,om.score,bm.score],["dj",djCheck.checked,om.dj,bm.dj],["bp",bpCheck.checked,om.bp,bm.bp]];
+  for(let i=1;i<out.length;i++){
+   const r=out[i],b=idx.get(key(val(r,om.song),val(r,om.diff)));if(!b)continue;matchedCount++;
+   for(const [t,on,oi,bi] of items){
+    if(!on||oi<0||bi<0)continue;
+    const old=val(r,oi),nv=val(b,bi),q=choose(old,nv,t);
+    if(q[0]){r[oi]=q[1];cnt[t]++;logs.push([val(r,om.song),val(r,om.diff),t,old,nv,q[1]])}
+   }
+  }
+  merged=out.map(r=>r.map(csv).join(",")).join("\r\n")+"\r\n";
+  matchedEl.textContent=matchedCount.toLocaleString();clearNEl.textContent=cnt.clear.toLocaleString();scoreNEl.textContent=cnt.score.toLocaleString();bpNEl.textContent=cnt.bp.toLocaleString();djNEl.textContent=cnt.dj.toLocaleString();
+  rowsEl.innerHTML=logs.slice(0,1000).map(r=>"<tr>"+r.map(esc).map(x=>"<td>"+x+"</td>").join("")+"</tr>").join("");
+  resultEl.classList.remove("hidden");
+  statusEl.innerHTML='<span class="ok">完了：公式CSVに'+logs.length.toLocaleString()+'件を反映しました。下の「統合ファイルをダウンロード」を押してください。</span>';
+  resultEl.scrollIntoView({behavior:"smooth",block:"start"});
+ }catch(e){error(e&&e.message?e.message:String(e))}
+ finally{runBtn.disabled=false;runBtn.classList.remove("disabled")}
+});
+downloadBtn.addEventListener("click",()=>{if(!merged){error("先に「比較・統合する」を実行してください。");return}save(merged,"IIDX_統合結果_SparkleShower.csv")});
+downloadLogBtn.addEventListener("click",()=>{if(!logs.length){error("更新された項目がありません。");return}save(["曲名,譜面,更新項目,公式,リザルト手帳,採用値",...logs.map(r=>r.map(csv).join(","))].join("\r\n")+"\r\n","IIDX_更新一覧.csv")});
 </script>
 </body></html>
