@@ -1,0 +1,833 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#f5f7fa">
+<meta name="description" content="外部ツールCSVのベスト記録をIIDX公式CSVに統合するツール（完全クライアントサイド）">
+<title>IIDX CSV統合</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:#f5f7fa;color:#182230;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Hiragino Sans",sans-serif}
+main{max-width:720px;margin:auto;padding:calc(18px + env(safe-area-inset-top)) 14px calc(28px + env(safe-area-inset-bottom))}
+h1{font-size:27px;margin:4px 4px 3px}
+.sub{font-size:13px;color:#667085;margin:0 4px 20px}
+.card{background:#fff;border:1px solid #e1e5ea;border-radius:18px;padding:17px;margin:12px 0;box-shadow:0 2px 12px rgba(0,0,0,.04)}
+h2{font-size:18px;margin:0 0 14px}
+.drop{
+  border:2px dashed #b8c0ca;
+  border-radius:14px;
+  padding:23px 12px;
+  text-align:center;
+  background:#fafbfc;
+  min-height:105px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  cursor:pointer;
+  position:relative;
+  -webkit-user-select:none;
+  user-select:none;
+}
+.drop:active{background:#eef2f6}
+.drop.has-file{border-color:#067647;background:#f0fdf4}
+.drop input[type="file"]{
+  position:absolute;
+  inset:0;
+  width:100%;
+  height:100%;
+  opacity:0;
+  cursor:pointer;
+  font-size:0;
+}
+.fname{font-size:12px;color:#667085;margin:8px 2px 0;word-break:break-all;min-height:17px}
+.fname.selected{color:#067647;font-weight:600}
+.filebox{margin-bottom:15px}
+.filebox:last-child{margin-bottom:0}
+.tag{font-size:13px;font-weight:700}
+.checks{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.check{border:1px solid #dfe3e8;border-radius:12px;padding:12px;font-size:14px;background:#fafbfc}
+.check input{width:18px;height:18px;vertical-align:middle;margin-right:7px}
+button{width:100%;min-height:50px;border:0;border-radius:13px;font-size:16px;font-weight:750;margin-top:10px}
+.primary{background:#111827;color:#fff}
+.secondary{background:#eef2f6;color:#182230}
+.disabled{opacity:.45;pointer-events:none}
+.status{font-size:13px;color:#667085;margin-top:10px;text-align:center;min-height:18px}
+.note{font-size:12px;color:#667085;line-height:1.55;background:#f8fafc;border-radius:11px;padding:11px;margin-top:12px}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.stat{background:#f8fafc;border-radius:12px;padding:12px}
+.num{font-size:23px;font-weight:800}
+.label{font-size:11px;color:#667085}
+.tablewrap{max-height:400px;overflow:auto;border:1px solid #e6e8eb;border-radius:11px;margin-top:14px;-webkit-overflow-scrolling:touch}
+table{border-collapse:collapse;width:100%;font-size:12px;white-space:nowrap}
+th,td{padding:8px;border-bottom:1px solid #eee;text-align:left}
+th{position:sticky;top:0;background:#f8fafc;z-index:1}
+.hidden{display:none}
+.ok{color:#067647}
+.err{color:#b42318}
+#download{font-weight:700;min-height:48px}
+.hint{font-size:11px;color:#98a2b3;margin-top:6px;text-align:center}
+.debug{font-size:11px;color:#667085;background:#f8fafc;border-radius:8px;padding:8px;margin-top:8px;word-break:break-all;max-height:80px;overflow:auto}
+</style>
+</head>
+<body>
+<main>
+<h1>IIDX CSV統合</h1>
+<p class="sub">IIDX公式CSV ← 外部ツールCSV ベスト記録統合</p>
+
+<section class="card">
+<h2>① CSVを選択</h2>
+<div class="filebox">
+  <div class="tag" id="officialTag">① IIDX公式CSV</div>
+  <div class="drop" id="officialDrop">
+    <span id="officialLabel">タップしてファイルを選択</span>
+    <input id="official" type="file" accept=".csv,text/csv,text/plain">
+  </div>
+  <div id="officialName" class="fname">未選択</div>
+</div>
+<div class="filebox">
+  <div class="tag" id="bookTag">② 外部ツールソフトCSV</div>
+  <div class="drop" id="bookDrop">
+    <span id="bookLabel">タップしてファイルを選択</span>
+    <input id="book" type="file" accept=".csv,text/csv,text/plain">
+  </div>
+  <div id="bookName" class="fname">未選択</div>
+</div>
+<p class="hint">※ 先に公式CSV、次に外部ツールのCSVを選択してください</p>
+</section>
+
+<section class="card">
+<h2>② 更新する項目</h2>
+<div class="checks">
+  <label class="check"><input id="clear" type="checkbox" checked>クリアタイプ</label>
+  <label class="check"><input id="score" type="checkbox" checked>スコア</label>
+  <label class="check"><input id="dj" type="checkbox" checked>DJ LEVEL</label>
+  <label class="check"><input id="bp" type="checkbox" checked>ミスカウント</label>
+</div>
+<button id="run" class="primary">比較・統合する</button>
+<div id="status" class="status"></div>
+<div id="debug" class="debug hidden"></div>
+</section>
+
+<section id="result" class="card hidden">
+<h2>③ 統合結果</h2>
+<div class="stats">
+  <div class="stat"><div class="label">照合譜面</div><div class="num" id="matched">0</div></div>
+  <div class="stat"><div class="label">クリア更新</div><div class="num" id="clearN">0</div></div>
+  <div class="stat"><div class="label">スコア更新</div><div class="num" id="scoreN">0</div></div>
+  <div class="stat"><div class="label">BP更新</div><div class="num" id="bpN">0</div></div>
+  <div class="stat"><div class="label">DJ LEVEL更新</div><div class="num" id="djN">0</div></div>
+</div>
+<button id="download" class="secondary">統合ファイルをダウンロード</button>
+<button id="downloadLog" class="secondary">更新一覧CSVを保存</button>
+<div class="tablewrap">
+  <table>
+    <thead>
+      <tr>
+        <th>曲名</th><th>譜面</th><th>項目</th><th>公式</th><th>外部</th><th>採用</th>
+      </tr>
+    </thead>
+    <tbody id="rows"></tbody>
+  </table>
+</div>
+</section>
+
+<section class="card">
+<h2>🔒 プライバシー</h2>
+<div class="note">
+  CSVはサーバーへアップロードしません。Safari内で読み込み・比較・CSV生成を行います。
+  ページを閉じれば、ページ内のデータは破棄されます。
+</div>
+</section>
+</main>
+
+<script>
+"use strict";
+
+let bookFile = null;
+let officialFile = null;
+let merged = "";
+let logs = [];
+
+/* ===== ランク定義 ===== */
+/* クリアタイプ順位（公式と同じ・下位→上位）
+   NO PLAY < FAILED < ASSIST CLEAR < EASY CLEAR < CLEAR < HARD < EX HARD < FULLCOMBO */
+const CR = {
+  "NO PLAY": 0,
+  "FAILED": 1,
+  "A-CLEAR": 2, "ASSIST CLEAR": 2, "ASSIST": 2, "ASSISTED CLEAR": 2,
+  "E-CLEAR": 3, "EASY CLEAR": 3, "EASY": 3,
+  "CLEAR": 4,
+  "H-CLEAR": 5, "HARD CLEAR": 5, "HARD": 5,
+  "EXH-CLEAR": 6, "EX HARD CLEAR": 6, "EXHARD": 6, "EX-HARD": 6,
+  "F-COMBO": 7, "FULLCOMBO CLEAR": 7, "FULL COMBO CLEAR": 7, "FULLCOMBO": 7, "FC": 7,
+  "MAX": 8, "MAX-": 8
+};
+
+const LR = {
+  "": -1, "-": -1, "－": -1, "---": -1, "———": -1,
+  "NO PLAY": -1, "NOPLAY": -1,
+  "F": 0, "E": 1, "D": 2, "C": 3,
+  "B": 4, "A": 5, "AA": 6, "AAA": 7
+};
+
+/* 難易度の正規化マップ */
+const DIFF_MAP = {
+  "B": "BEGINNER", "BEGINNER": "BEGINNER", "SPB": "BEGINNER", "DPB": "BEGINNER",
+  "N": "NORMAL", "NORMAL": "NORMAL", "SPN": "NORMAL", "DPN": "NORMAL",
+  "H": "HYPER", "HYPER": "HYPER", "SPH": "HYPER", "DPH": "HYPER",
+  "A": "ANOTHER", "ANOTHER": "ANOTHER", "SPA": "ANOTHER", "DPA": "ANOTHER",
+  "L": "LEGGENDARIA", "LEGGENDARIA": "LEGGENDARIA", "LEG": "LEGGENDARIA",
+  "SPL": "LEGGENDARIA", "DPL": "LEGGENDARIA", "†": "LEGGENDARIA", "†LEGGENDARIA": "LEGGENDARIA"
+};
+
+const DIFFS = ["BEGINNER", "NORMAL", "HYPER", "ANOTHER", "LEGGENDARIA"];
+
+const $ = id => document.getElementById(id);
+
+const bookInput = $("book");
+const officialInput = $("official");
+const bookNameEl = $("bookName");
+const officialNameEl = $("officialName");
+const bookDrop = $("bookDrop");
+const officialDrop = $("officialDrop");
+const bookLabel = $("bookLabel");
+const officialLabel = $("officialLabel");
+const runBtn = $("run");
+const statusEl = $("status");
+const debugEl = $("debug");
+const resultEl = $("result");
+const matchedEl = $("matched");
+const clearNEl = $("clearN");
+const scoreNEl = $("scoreN");
+const bpNEl = $("bpN");
+const djNEl = $("djN");
+const rowsEl = $("rows");
+const downloadBtn = $("download");
+const downloadLogBtn = $("downloadLog");
+const clearCheck = $("clear");
+const scoreCheck = $("score");
+const djCheck = $("dj");
+const bpCheck = $("bp");
+const bookTag = $("bookTag");
+const officialTag = $("officialTag");
+
+/* ファイル名から外部ツール種別を推定 */
+function detectToolLabel(fileName) {
+  const n = String(fileName || "").toLowerCase();
+  // リザルト手帳（INFINITAS）
+  if (
+    n.includes("リザルト") || n.includes("result") || n.includes("notebook") ||
+    n.includes("inf-notebook") || n.includes("inf_notebook") ||
+    /^sp[\s_-]?\d*\.csv$/i.test(n) || /^dp[\s_-]?\d*\.csv$/i.test(n)
+  ) {
+    return "リザルト手帳CSV";
+  }
+  // 打鍵カウンタ系
+  if (n.includes("daken") || n.includes("打鍵") || n.includes("counter")) {
+    return "打鍵カウンタCSV";
+  }
+  // Reflux
+  if (n.includes("reflux") || n.endsWith(".tsv")) {
+    return "Reflux CSV/TSV";
+  }
+  // BPI / BPIM
+  if (n.includes("bpi") || n.includes("bpim")) {
+    return "BPI系CSV";
+  }
+  // 公式っぽい名前が誤って入った場合
+  if (/_sp_score\.csv$/i.test(n) || /_dp_score\.csv$/i.test(n) || /^\d{4}-\d{4}_[sd]p_score/i.test(n)) {
+    return "公式形式のCSV（要確認）";
+  }
+  return "外部ツールソフトCSV";
+}
+
+function setFile(side, file) {
+  if (side === "book") {
+    bookFile = file;
+    if (file) {
+      const toolLabel = detectToolLabel(file.name);
+      bookTag.textContent = "② " + toolLabel;
+      bookNameEl.textContent = file.name + " (" + Math.round(file.size / 1024) + " KB)";
+      bookNameEl.classList.add("selected");
+      bookDrop.classList.add("has-file");
+      bookLabel.textContent = "選択済み（再タップで変更）";
+    } else {
+      bookTag.textContent = "② 外部ツールソフトCSV";
+      bookNameEl.textContent = "未選択";
+      bookNameEl.classList.remove("selected");
+      bookDrop.classList.remove("has-file");
+      bookLabel.textContent = "タップしてファイルを選択";
+    }
+  } else {
+    officialFile = file;
+    if (file) {
+      officialTag.textContent = "① IIDX公式CSV";
+      officialNameEl.textContent = file.name + " (" + Math.round(file.size / 1024) + " KB)";
+      officialNameEl.classList.add("selected");
+      officialDrop.classList.add("has-file");
+      officialLabel.textContent = "選択済み（再タップで変更）";
+    } else {
+      officialTag.textContent = "① IIDX公式CSV";
+      officialNameEl.textContent = "未選択";
+      officialNameEl.classList.remove("selected");
+      officialDrop.classList.remove("has-file");
+      officialLabel.textContent = "タップしてファイルを選択";
+    }
+  }
+}
+
+bookInput.addEventListener("change", () => {
+  const f = bookInput.files && bookInput.files[0] ? bookInput.files[0] : null;
+  setFile("book", f);
+});
+officialInput.addEventListener("change", () => {
+  const f = officialInput.files && officialInput.files[0] ? officialInput.files[0] : null;
+  setFile("official", f);
+});
+
+/* ===== ユーティリティ ===== */
+function decode(buf) {
+  const u = new Uint8Array(buf);
+  if (u.length >= 3 && u[0] === 0xEF && u[1] === 0xBB && u[2] === 0xBF) {
+    return new TextDecoder("utf-8").decode(u);
+  }
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(u);
+  } catch (e) {
+    try {
+      return new TextDecoder("shift-jis").decode(u);
+    } catch (e2) {
+      return new TextDecoder("utf-8").decode(u);
+    }
+  }
+}
+
+function parseCSV(s) {
+  s = s.replace(/^\uFEFF/, "");
+  const a = [];
+  let r = [], c = "", q = false;
+  for (let i = 0; i < s.length; i++) {
+    const x = s[i], n = s[i + 1];
+    if (q) {
+      if (x === '"' && n === '"') { c += '"'; i++; }
+      else if (x === '"') q = false;
+      else c += x;
+    } else if (x === '"') q = true;
+    else if (x === ',') { r.push(c); c = ""; }
+    else if (x === '\n') { r.push(c); a.push(r); r = []; c = ""; }
+    else if (x !== '\r') c += x;
+  }
+  if (c !== "" || r.length) { r.push(c); a.push(r); }
+  return a.filter(row => row.some(v => String(v).trim() !== ""));
+}
+
+function norm(x) {
+  return String(x ?? "").trim().replace(/\u3000/g, " ").replace(/\s+/g, " ").toUpperCase();
+}
+
+function num(x) {
+  const n = parseInt(String(x).replace(/[^\d-]/g, ""), 10);
+  return Number.isFinite(n) ? n : null;
+}
+
+function canonicalClear(x) {
+  x = norm(x);
+  const map = {
+    "E-CLEAR": "EASY CLEAR", "EASY": "EASY CLEAR",
+    "A-CLEAR": "ASSIST CLEAR", "ASSIST": "ASSIST CLEAR",
+    "H-CLEAR": "HARD CLEAR", "HARD": "HARD CLEAR",
+    "EXH-CLEAR": "EX HARD CLEAR", "EXHARD": "EX HARD CLEAR", "EX-HARD": "EX HARD CLEAR",
+    "F-COMBO": "FULLCOMBO CLEAR", "FULLCOMBO": "FULLCOMBO CLEAR", "FC": "FULLCOMBO CLEAR"
+  };
+  return map[x] || x;
+}
+
+function clearRank(x) {
+  return CR[canonicalClear(x)] ?? CR[norm(x)] ?? 0;
+}
+
+function djRank(x) {
+  const n = norm(x);
+  if (!n || n === "-" || n === "－" || n === "---" || n === "———" ||
+      n === "NO PLAY" || n === "NOPLAY" || n === "???") return -1;
+  return LR[n] ?? -1;
+}
+
+function normDiff(x) {
+  const n = norm(x);
+  if (DIFF_MAP[n]) return DIFF_MAP[n];
+  // 先頭1文字で判定
+  const first = n.charAt(0);
+  if (DIFF_MAP[first]) return DIFF_MAP[first];
+  // 部分一致
+  for (const d of DIFFS) {
+    if (n.includes(d)) return d;
+  }
+  return n;
+}
+
+function esc(x) {
+  return String(x ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
+
+function csv(x) {
+  x = String(x ?? "");
+  return /[",\r\n]/.test(x) ? '"' + x.replaceAll('"', '""') + '"' : x;
+}
+
+function save(text, name) {
+  const blob = new Blob(["\uFEFF" + text], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+function error(msg) {
+  statusEl.innerHTML = '<span class="err">エラー：' + esc(msg) + "</span>";
+}
+
+function showDebug(msg) {
+  debugEl.textContent = msg;
+  debugEl.classList.remove("hidden");
+}
+
+/* ===== 列検出 ===== */
+function findCol(headers, names) {
+  const z = headers.map(norm);
+  for (const n of names) {
+    const i = z.indexOf(norm(n));
+    if (i >= 0) return i;
+  }
+  for (let i = 0; i < z.length; i++) {
+    for (const n of names) {
+      if (z[i].includes(norm(n))) return i;
+    }
+  }
+  return -1;
+}
+
+function isWideFormat(headers) {
+  // 公式CSVは「NORMAL スコア」「HYPER クリアタイプ」のような列を持つ
+  const joined = headers.map(norm).join("|");
+  return (
+    joined.includes("NORMAL") &&
+    (joined.includes("スコア") || joined.includes("SCORE") || joined.includes("クリア"))
+  ) || (
+    joined.includes("HYPER") &&
+    (joined.includes("スコア") || joined.includes("SCORE"))
+  );
+}
+
+/* ===== リザルト手帳（縦持ち）をパース ===== */
+function parseBookLong(rows) {
+  const headers = rows[0];
+  const songCol = findCol(headers, ["曲名", "タイトル", "TITLE", "MUSIC", "SONG"]);
+  const diffCol = findCol(headers, ["難易度", "譜面", "DIFFICULTY", "LEVEL", "DIFF"]);
+  const scoreCol = findCol(headers, ["スコア", "SCORE", "EX SCORE", "EXSCORE"]);
+  const clearCol = findCol(headers, ["クリアタイプ", "CLEAR TYPE", "CLEARTYPE", "CLEAR", "LAMP"]);
+  let djCol = findCol(headers, ["DJ LEVEL", "DJLEVEL", "DJ レベル", "DJレベル", "RANK", "GRADE", "ランク"]);
+  if (djCol < 0) {
+    // 「DJ」を含む列を探す（難易度列と区別）
+    const z = headers.map(norm);
+    for (let i = 0; i < z.length; i++) {
+      if (z[i].includes("DJ") && !z[i].includes("難易度") && !z[i].includes("DIFF")) {
+        djCol = i;
+        break;
+      }
+    }
+  }
+  const bpCol = findCol(headers, ["ミスカウント", "MISS COUNT", "MISSCOUNT", "BP", "BREAK POINT", "MISS"]);
+
+  if (songCol < 0) {
+    throw new Error("外部ツールCSVで曲名列を特定できません。ヘッダー例: 曲名 / タイトル");
+  }
+  if (diffCol < 0) {
+    throw new Error("外部ツールCSVで難易度列を特定できません。ヘッダー例: 難易度 / 譜面");
+  }
+
+  const map = new Map(); // key = norm(title)\0normDiff → record
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i];
+    const title = String(row[songCol] ?? "").trim();
+    if (!title) continue;
+    const diff = normDiff(row[diffCol]);
+    if (!diff) continue;
+    const key = norm(title) + "\0" + diff;
+    const rec = {
+      title,
+      diff,
+      score: scoreCol >= 0 ? String(row[scoreCol] ?? "").trim() : "",
+      clear: clearCol >= 0 ? String(row[clearCol] ?? "").trim() : "",
+      dj: djCol >= 0 ? String(row[djCol] ?? "").trim() : "",
+      bp: bpCol >= 0 ? String(row[bpCol] ?? "").trim() : ""
+    };
+    // 同じキーがあればより良い方を残す
+    const prev = map.get(key);
+    if (!prev) {
+      map.set(key, rec);
+    } else {
+      // score優先で比較
+      const better =
+        (num(rec.score) ?? -1) > (num(prev.score) ?? -1) ||
+        clearRank(rec.clear) > clearRank(prev.clear) ||
+        djRank(rec.dj) > djRank(prev.dj) ||
+        (num(rec.bp) != null && (num(prev.bp) == null || num(rec.bp) < num(prev.bp)));
+      if (better) map.set(key, rec);
+    }
+  }
+  return { map, headers, songCol, diffCol };
+}
+
+/* ===== 公式CSV（横持ち）の列マッピングを作る ===== */
+function findColFlexible(headers, mustInclude, preferNames) {
+  // まず厳密な名前で探す
+  const exact = findCol(headers, preferNames);
+  if (exact >= 0) return exact;
+  // 次に「難易度名 + キーワード」を両方含む列を探す
+  const z = headers.map(norm);
+  const must = mustInclude.map(norm);
+  for (let i = 0; i < z.length; i++) {
+    if (must.every(m => z[i].includes(m))) return i;
+  }
+  return -1;
+}
+
+function mapOfficialWide(headers) {
+  const titleCol = findCol(headers, ["タイトル", "曲名", "TITLE", "MUSIC", "SONG"]);
+  if (titleCol < 0) {
+    throw new Error("公式CSVでタイトル列を特定できません。ヘッダーに「タイトル」があるか確認してください。");
+  }
+
+  // 各難易度ごとの列を探す
+  // 公式形式例: "NORMAL スコア", "NORMAL クリアタイプ", "NORMAL DJ LEVEL"
+  const colMap = {};
+  for (const d of DIFFS) {
+    const score = findColFlexible(headers, [d, "スコア"], [
+      d + " スコア", d + "スコア", d + " SCORE", d + "SCORE",
+      d + " EX SCORE", d + " EXSCORE", d + " EXスコア"
+    ]);
+    // スコアが見つからなければ EX だけでも
+    const score2 = score >= 0 ? score : findColFlexible(headers, [d, "SCORE"], [
+      d + " SCORE", d + "SCORE"
+    ]);
+
+    const clear = findColFlexible(headers, [d, "クリア"], [
+      d + " クリアタイプ", d + "クリアタイプ", d + " CLEAR TYPE", d + " CLEARTYPE",
+      d + " CLEAR", d + " クリア"
+    ]);
+    const clear2 = clear >= 0 ? clear : findColFlexible(headers, [d, "CLEAR"], [
+      d + " CLEAR TYPE", d + " CLEARTYPE", d + " CLEAR"
+    ]);
+
+    // DJ LEVEL: 公式は "NORMAL DJ LEVEL" 形式
+    let dj = findCol(headers, [
+      d + " DJ LEVEL", d + " DJLEVEL", d + "DJ LEVEL", d + "DJLEVEL",
+      d + " ＤＪ ＬＥＶＥＬ", d + " DJ レベル", d + " DJレベル"
+    ]);
+    if (dj < 0) {
+      // 難易度名と DJ を両方含む列を探す
+      const z = headers.map(norm);
+      for (let i = 0; i < z.length; i++) {
+        if (z[i].includes(d) && z[i].includes("DJ")) {
+          dj = i;
+          break;
+        }
+      }
+    }
+    if (dj < 0) {
+      dj = findCol(headers, [
+        d + " ランク", d + "ランク", d + " RANK", d + "RANK", d + " GRADE", d + "GRADE"
+      ]);
+    }
+
+    const bp = findColFlexible(headers, [d, "ミス"], [
+      d + " ミスカウント", d + "ミスカウント", d + " MISS COUNT", d + " MISSCOUNT",
+      d + " BP", d + "BP", d + " ミス"
+    ]);
+    const bp2 = bp >= 0 ? bp : findColFlexible(headers, [d, "BP"], [
+      d + " BP", d + "BP", d + " MISS"
+    ]);
+
+    colMap[d] = {
+      score: score2 >= 0 ? score2 : score,
+      clear: clear2 >= 0 ? clear2 : clear,
+      dj,
+      bp: bp2 >= 0 ? bp2 : bp
+    };
+  }
+  return { titleCol, colMap };
+}
+
+/* ===== メイン処理 ===== */
+runBtn.addEventListener("click", async () => {
+  if (!bookFile || !officialFile) {
+    error("2つのCSVを選択してください。");
+    return;
+  }
+
+  runBtn.disabled = true;
+  runBtn.classList.add("disabled");
+  statusEl.textContent = "CSVを読み込んで比較しています…";
+  resultEl.classList.add("hidden");
+  debugEl.classList.add("hidden");
+
+  try {
+    const [bb, ob] = await Promise.all([
+      bookFile.arrayBuffer(),
+      officialFile.arrayBuffer()
+    ]);
+
+    if (!bb || bb.byteLength === 0) throw new Error("外部ツールCSVが空です。");
+    if (!ob || ob.byteLength === 0) throw new Error("IIDX公式CSVが空です。");
+
+    const br = parseCSV(decode(bb));
+    const or = parseCSV(decode(ob));
+
+    if (br.length < 2) throw new Error("外部ツールCSVにデータ行がありません。");
+    if (or.length < 2) throw new Error("IIDX公式CSVにデータ行がありません。");
+
+    // デバッグ用にヘッダーを表示
+    const bookHeaders = br[0].join(" | ");
+    const offHeaders = or[0].join(" | ");
+
+    // リザルト手帳を縦持ちとしてパース
+    const book = parseBookLong(br);
+
+    // 手帳側にDJが入っている件数を数える
+    let bookDjCount = 0;
+    for (const rec of book.map.values()) {
+      if (djRank(rec.dj) >= 0) bookDjCount++;
+    }
+
+    // 公式が横持ちか縦持ちか判定
+    const officialIsWide = isWideFormat(or[0]);
+
+    const cnt = { clear: 0, score: 0, bp: 0, dj: 0 };
+    logs = [];
+    let matchedCount = 0;
+    let out;
+
+    if (officialIsWide) {
+      // ===== 公式 = 横持ち =====
+      const { titleCol, colMap } = mapOfficialWide(or[0]);
+
+      // 検出した列インデックスをデバッグ表示
+      const colInfo = DIFFS.map(d => {
+        const c = colMap[d];
+        return d + ": score=" + c.score + " clear=" + c.clear + " dj=" + c.dj + " bp=" + c.bp;
+      }).join(" / ");
+      showDebug(
+        "手帳ヘッダー: " + bookHeaders.slice(0, 180) +
+        "\n公式ヘッダー: " + offHeaders.slice(0, 280) +
+        "\n手帳の有効DJ数: " + bookDjCount +
+        "\n公式列検出: " + colInfo
+      );
+
+      out = or.map(r => r.slice());
+
+      for (let i = 1; i < out.length; i++) {
+        const r = out[i];
+        const title = String(r[titleCol] ?? "").trim();
+        if (!title) continue;
+
+        for (const d of DIFFS) {
+          const cols = colMap[d];
+          const key = norm(title) + "\0" + d;
+          const b = book.map.get(key);
+          if (!b) continue;
+          matchedCount++;
+
+          // スコア
+          if (scoreCheck.checked && cols.score >= 0) {
+            const old = String(r[cols.score] ?? "").trim();
+            const nv = b.score;
+            const ox = num(old), ny = num(nv);
+            if (ny != null && (ox == null || ny > ox)) {
+              r[cols.score] = nv;
+              cnt.score++;
+              logs.push([title, d, "score", old, nv, nv]);
+            }
+          }
+          // クリア
+          if (clearCheck.checked && cols.clear >= 0) {
+            const old = String(r[cols.clear] ?? "").trim();
+            const nv = b.clear;
+            if (clearRank(nv) > clearRank(old)) {
+              const adopted = canonicalClear(nv);
+              r[cols.clear] = adopted;
+              cnt.clear++;
+              logs.push([title, d, "clear", old, nv, adopted]);
+            }
+          }
+          // DJ LEVEL（NO PLAY / 空 → プレイ済みランクも確実に反映）
+          if (djCheck.checked && cols.dj >= 0) {
+            const old = String(r[cols.dj] ?? "").trim();
+            const nv = String(b.dj ?? "").trim();
+            const oldR = djRank(old);
+            const newR = djRank(nv);
+            if (newR > oldR) {
+              r[cols.dj] = nv;
+              cnt.dj++;
+              logs.push([title, d, "dj", old || "(空)", nv, nv]);
+            }
+          }
+          // BP
+          if (bpCheck.checked && cols.bp >= 0) {
+            const old = String(r[cols.bp] ?? "").trim();
+            const nv = b.bp;
+            const ox = num(old), ny = num(nv);
+            if (ny != null && (ox == null || ny < ox)) {
+              r[cols.bp] = nv;
+              cnt.bp++;
+              logs.push([title, d, "bp", old, nv, nv]);
+            }
+          }
+        }
+      }
+    } else {
+      // ===== 公式 = 縦持ち（同じ形式） =====
+      const headers = or[0];
+      const songCol = findCol(headers, ["曲名", "タイトル", "TITLE", "MUSIC", "SONG"]);
+      const diffCol = findCol(headers, ["難易度", "譜面", "DIFFICULTY", "LEVEL", "DIFF"]);
+      const scoreCol = findCol(headers, ["スコア", "SCORE", "EX SCORE", "EXSCORE"]);
+      const clearCol = findCol(headers, ["クリアタイプ", "CLEAR TYPE", "CLEARTYPE", "CLEAR", "LAMP"]);
+      let djCol = findCol(headers, ["DJ LEVEL", "DJLEVEL", "DJ レベル", "DJレベル", "RANK", "GRADE", "ランク"]);
+      if (djCol < 0) {
+        const z = headers.map(norm);
+        for (let i = 0; i < z.length; i++) {
+          if (z[i].includes("DJ") && !z[i].includes("難易度")) { djCol = i; break; }
+        }
+      }
+      const bpCol = findCol(headers, ["ミスカウント", "MISS COUNT", "MISSCOUNT", "BP", "BREAK POINT", "MISS"]);
+
+      if (songCol < 0) throw new Error("公式CSVで曲名列を特定できません。");
+      if (diffCol < 0) throw new Error("公式CSVで難易度列を特定できません。");
+
+      showDebug(
+        "手帳ヘッダー: " + bookHeaders.slice(0, 180) +
+        "\n公式ヘッダー: " + offHeaders.slice(0, 280) +
+        "\n手帳の有効DJ数: " + bookDjCount +
+        "\n公式(縦)列: song=" + songCol + " diff=" + diffCol + " score=" + scoreCol +
+        " clear=" + clearCol + " dj=" + djCol + " bp=" + bpCol
+      );
+
+      out = or.map(r => r.slice());
+
+      for (let i = 1; i < out.length; i++) {
+        const r = out[i];
+        const title = String(r[songCol] ?? "").trim();
+        const diff = normDiff(r[diffCol]);
+        if (!title || !diff) continue;
+        const key = norm(title) + "\0" + diff;
+        const b = book.map.get(key);
+        if (!b) continue;
+        matchedCount++;
+
+        if (scoreCheck.checked && scoreCol >= 0) {
+          const old = String(r[scoreCol] ?? "").trim();
+          const nv = b.score;
+          const ox = num(old), ny = num(nv);
+          if (ny != null && (ox == null || ny > ox)) {
+            r[scoreCol] = nv;
+            cnt.score++;
+            logs.push([title, diff, "score", old, nv, nv]);
+          }
+        }
+        if (clearCheck.checked && clearCol >= 0) {
+          const old = String(r[clearCol] ?? "").trim();
+          const nv = b.clear;
+          if (clearRank(nv) > clearRank(old)) {
+            const adopted = canonicalClear(nv);
+            r[clearCol] = adopted;
+            cnt.clear++;
+            logs.push([title, diff, "clear", old, nv, adopted]);
+          }
+        }
+        if (djCheck.checked && djCol >= 0) {
+          const old = String(r[djCol] ?? "").trim();
+          const nv = String(b.dj ?? "").trim();
+          const oldR = djRank(old);
+          const newR = djRank(nv);
+          if (newR > oldR) {
+            r[djCol] = nv;
+            cnt.dj++;
+            logs.push([title, diff, "dj", old || "(空)", nv, nv]);
+          }
+        }
+        if (bpCheck.checked && bpCol >= 0) {
+          const old = String(r[bpCol] ?? "").trim();
+          const nv = b.bp;
+          const ox = num(old), ny = num(nv);
+          if (ny != null && (ox == null || ny < ox)) {
+            r[bpCol] = nv;
+            cnt.bp++;
+            logs.push([title, diff, "bp", old, nv, nv]);
+          }
+        }
+      }
+    }
+
+    merged = out.map(r => r.map(csv).join(",")).join("\r\n") + "\r\n";
+
+    matchedEl.textContent = matchedCount.toLocaleString();
+    clearNEl.textContent = cnt.clear.toLocaleString();
+    scoreNEl.textContent = cnt.score.toLocaleString();
+    bpNEl.textContent = cnt.bp.toLocaleString();
+    djNEl.textContent = cnt.dj.toLocaleString();
+
+    rowsEl.innerHTML = logs.slice(0, 1000).map(r =>
+      "<tr>" + r.map(esc).map(x => "<td>" + x + "</td>").join("") + "</tr>"
+    ).join("");
+
+    resultEl.classList.remove("hidden");
+    statusEl.innerHTML = '<span class="ok">完了：公式CSVに' +
+      logs.length.toLocaleString() +
+      '件を反映しました。下の「統合ファイルをダウンロード」を押してください。</span>';
+
+    resultEl.scrollIntoView({ behavior: "smooth", block: "start" });
+  } catch (e) {
+    console.error(e);
+    error(e && e.message ? e.message : String(e));
+  } finally {
+    runBtn.disabled = false;
+    runBtn.classList.remove("disabled");
+  }
+});
+
+downloadBtn.addEventListener("click", () => {
+  if (!merged) {
+    error("先に「比較・統合する」を実行してください。");
+    return;
+  }
+  // 公式CSVのファイル名をそのまま使用（例: 3822-7201_sp_score.csv）
+  const name = (officialFile && officialFile.name)
+    ? officialFile.name
+    : "score.csv";
+  save(merged, name);
+});
+
+downloadLogBtn.addEventListener("click", () => {
+  if (!logs.length) {
+    error("更新された項目がありません。");
+    return;
+  }
+  save(
+    ["曲名,譜面,更新項目,公式,外部ツール,採用値", ...logs.map(r => r.map(csv).join(","))].join("\r\n") + "\r\n",
+    "IIDX_更新一覧.csv"
+  );
+});
+</script>
+</body>
+</html>
